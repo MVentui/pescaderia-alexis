@@ -54,7 +54,7 @@ function seed() {
   ['Pescado fresco', 'Mariscos', 'Congelados', 'Enlatados', 'Bebidas', 'Otros'].forEach((name, i) => d.categories.push({ id: i + 1, name }));
 
   [
-    ['PF-001', 'Merluza (filet)', 1, 8900, 4500, 'Kilo', 24.5, 8, 'Filet de merluza limpio, sin espinas.', 'img/filetmerluza.jpg'],
+    ['PF-001', 'Merluza (filet)', 1, 8900, 4500, 'Kilo', 24.5, 8, 'Filet de merluza limpio, sin espinas.', 'img/filetmerzluza.jpg'],
     ['PF-002', 'Salmón rosado', 1, 19500, 14000, 'Kilo', 6.2, 4, 'Salmón rosado fresco, ideal para plancha u horno.', 'img/salmonrosado.jpg'],
     ['PF-003', 'Trucha arcoíris', 1, 11200, 8000, 'Kilo', 3.4, 5, 'Trucha entera fresca de criadero.', 'img/truchaarcoiris.jpg'],
     ['PF-004', 'Surubí (postas)', 1, 12500, 9000, 'Kilo', 11, 5, 'Postas de surubí de río.', 'img/postassurubi.jpg'],
@@ -64,7 +64,7 @@ function seed() {
     ['MA-003', 'Mejillones 1 kg', 2, 6500, 4500, 'Unidad', 18, 10, 'Bolsa de mejillones de 1 kg.', 'img/mejillones.jpg'],
     ['MA-004', 'Pulpo', 2, 21000, 15000, 'Kilo', 4.5, 3, 'Pulpo cocido listo para servir.', 'img/pulpo.jpg'],
     ['CO-001', 'Bastoncitos de merluza 400 g', 3, 4200, 3000, 'Unidad', 32, 10, 'Bastoncitos empanados congelados.', 'img/bastonmerluza.jpg'],
-    ['CO-002', 'Hamburguesas de pescado x4', 3, 5800, 4000, 'Unidad', 5, 8, 'Pack de 4 hamburguesas de pescado.', 'img/hamburguesapescado.jpg'],
+    ['CO-002', 'Hamburguesas de pescado x4', 3, 5800, 4000, 'Unidad', 5, 8, 'Pack de 4 hamburguesas de pescado.', 'img/hamburgesapescado.jpg'],
     ['EN-001', 'Atún en lata 170 g', 4, 2900, 2000, 'Unidad', 40, 10, 'Atún al natural en lata.', 'img/atunlata.jpg'],
     ['EN-002', 'Caballa en lata 300 g', 4, 3400, 2400, 'Unidad', 25, 8, 'Caballa en aceite.', 'img/caballalata.jpg'],
     ['BE-001', 'Agua mineral 2 lts', 5, 1600, 1000, 'Unidad', 35, 10, 'Agua mineral sin gas bidón/botella 2L.', 'img/aguamineral.jpg'],
