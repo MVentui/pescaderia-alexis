@@ -67,7 +67,7 @@ const NAV = {
   Administrador: [
     [null, [['panel', 'Panel principal']]],
     ['Ventas', [['pedidos', 'Pedidos'], ['caja', 'Caja del día'], ['catalogo', 'Catálogo']]],
-    ['Inventario', [['productos', 'Productos'], ['categorias', 'Categorías'], ['proveedores', 'Proveedores'], ['compras', 'Compras'], ['movstock', 'Movimientos de stock'], ['control', 'Control de stock'], ['alertas', 'Alertas de stock']]],
+    ['Inventario', [['productos', 'Productos'], ['categorias', 'Categorías'], ['proveedores', 'Proveedores'], ['ordenes-compra', 'Órdenes de compra'], ['compras', 'Compras'], ['movstock', 'Movimientos de stock'], ['control', 'Control de stock'], ['alertas', 'Alertas de stock']]],
     ['Finanzas', [['movcaja', 'Movimientos de caja'], ['reportes', 'Reportes']]],
     ['Administración', [['usuarios', 'Usuarios y roles'], ['auditoria', 'Auditoría']]],
   ],
@@ -456,18 +456,29 @@ function orderModal(o) {
 }
 
 function viewOrders(root) {
-  let q = '', st = 'Todos los estados';
+  const todayStr = inputDate(new Date()), pastStr = inputDate(new Date(Date.now() - 30 * 86400000));
+  let q = '', st = 'Todos los estados', df = pastStr, dt = todayStr;
   root.innerHTML = pageHead(9, 'CU-09', 'Pedidos', 'Abrí un pedido para ver su detalle y cambiar su estado.') +
-    `<div class="toolbar"><div class="field grow"><input id="oq" placeholder="Buscar por número o cliente"></div>
-    <div class="field"><select id="ost">${options(['Todos los estados', ...Object.keys(NEXT_STATES)].map(s => [s, s]), st)}</select></div></div><div class="card table-wrap" id="otable"></div>`;
+    `<div class="toolbar"><div class="field grow"><input id="oq" placeholder="Buscar por número o cliente" value="${esc(q)}"></div>
+    <div class="field"><select id="ost">${options(['Todos los estados', ...Object.keys(NEXT_STATES)].map(s => [s, s]), st)}</select></div>
+    ${field('odf', 'Desde', `<input type="date" id="odf" value="${df}">`)}
+    ${field('odt', 'Hasta', `<input type="date" id="odt" value="${dt}">`)}
+    <button class="btn" id="oclear">Limpiar filtros</button></div><div class="card table-wrap" id="otable"></div>`;
   function draw() {
-    const list = db.orders.filter(o => (st === 'Todos los estados' || o.status === st) && (o.number + ' ' + clientName(o)).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.date.localeCompare(a.date));
+    const a = df ? parseDay(df) : new Date(0), b = dt ? new Date(parseDay(dt).getTime() + 86399999) : new Date(8.64e15);
+    const list = db.orders.filter(o => {
+      const d = new Date(o.date);
+      return d >= a && d <= b && (st === 'Todos los estados' || o.status === st) && (o.number + ' ' + clientName(o)).toLowerCase().includes(q.toLowerCase());
+    }).sort((x, y) => y.date.localeCompare(x.date));
     $('#otable', root).innerHTML = list.length ? `<table><thead><tr><th>Pedido</th><th>Fecha</th><th>Canal</th><th>Cliente</th><th class="num">Total</th><th>Estado</th></tr></thead><tbody>
       ${list.map(o => `<tr class="click" data-o="${o.id}"><td><b>${o.number}</b></td><td>${fmtDT(o.date)}</td><td><span class="badge">${o.channel}</span></td><td>${esc(clientName(o))}</td><td class="num">${money(o.total)}</td><td>${statusBadge(o.status)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No hay pedidos para mostrar.</div>';
   }
   draw();
   $('#oq', root).oninput = e => { q = e.target.value; draw(); };
   $('#ost', root).onchange = e => { st = e.target.value; draw(); };
+  $('#odf', root).onchange = e => { df = e.target.value; draw(); };
+  $('#odt', root).onchange = e => { dt = e.target.value; draw(); };
+  $('#oclear', root).onclick = () => { q = ''; st = 'Todos los estados'; df = ''; dt = ''; $('#oq', root).value = ''; $('#ost', root).value = st; $('#odf', root).value = ''; $('#odt', root).value = ''; draw(); };
   root.onclick = e => { const r = e.target.closest('[data-o]'); if (r) orderModal(db.orders.find(o => o.id === +r.dataset.o)); };
 }
 
@@ -494,7 +505,7 @@ function cashMovementModal() {
 function closeCajaModal() {
   const t = cajaTotals();
   const m = modal('Cerrar caja', `<div class="summary-box"><div class="kv"><span>Saldo inicial</span><b>${money(db.caja.saldoInicial)}</b></div><div class="kv"><span>Ingresos</span><b class="pos-amount">${money(t.ing)}</b></div>
-    <div class="kv"><span>Egresos</span><b class="neg-amount">${money(t.egr)}</b></div><div class="kv"><span>Saldo esperado</span><b>${money(t.saldo)}</b></div></div>
+    <div class="kv"><span>Egresos</span><b class="neg-amount">${money(t.egr)}</b></div></div>
     ${field('k-count', 'Efectivo contado', '<input id="k-count" inputmode="decimal">')}<div id="k-diff" class="hint"></div>
     <div id="k-obs-wrap"></div>`,
     [{ label: 'Cancelar' }, {
@@ -555,7 +566,8 @@ function viewAlerts(root) {
   let fc = '0', fl = 'Todos los niveles';
   root.innerHTML = pageHead(11, 'CU-12', 'Alertas de stock', 'Productos que llegaron al stock mínimo o se agotaron.') +
     `<div class="toolbar"><div class="field"><select id="a-cat">${options([['0', 'Todas las categorías'], ...db.categories.map(c => [c.id, c.name])], fc)}</select></div>
-    <div class="field"><select id="a-lv">${options(['Todos los niveles', 'Bajo', 'Sin stock'].map(s => [s, s]), fl)}</select></div></div><div class="card table-wrap" id="a-table"></div>`;
+    <div class="field"><select id="a-lv">${options(['Todos los niveles', 'Bajo', 'Sin stock'].map(s => [s, s]), fl)}</select></div>
+    <button class="btn" id="aclear">Limpiar filtros</button></div><div class="card table-wrap" id="a-table"></div>`;
   function draw() {
     const list = pendingAlerts().map(a => ({ a, p: prod(a.productId) })).filter(({ p }) => (fc === '0' || p.catId === +fc) && (fl === 'Todos los niveles' || levelOf(p) === fl));
     $('#a-table', root).innerHTML = list.length ? `<table><thead><tr><th>Producto</th><th>Categoría</th><th class="num">Stock actual</th><th class="num">Mínimo</th><th>Nivel</th><th>Alerta desde</th><th></th></tr></thead><tbody>
@@ -564,6 +576,7 @@ function viewAlerts(root) {
   draw();
   $('#a-cat', root).onchange = e => { fc = e.target.value; draw(); };
   $('#a-lv', root).onchange = e => { fl = e.target.value; draw(); };
+  $('#aclear', root).onclick = () => { fc = '0'; fl = 'Todos los niveles'; $('#a-cat', root).value = fc; $('#a-lv', root).value = fl; draw(); };
   root.onclick = e => { const b = e.target.closest('[data-ok]'); if (b) { db.alerts.find(a => a.id === +b.dataset.ok).attended = true; save(); toast('Alerta marcada como atendida'); render(); } };
 }
 
@@ -610,13 +623,149 @@ function viewSuppliers(root) {
   };
 }
 
+function purchaseOrderModal(po) {
+  const actives = db.suppliers.filter(s => s.active);
+  const prods = db.products.filter(p => p.active);
+  let items = po ? [...po.items] : [{ productId: prods[0] ? prods[0].id : 1, qty: 10 }];
+
+  const m = modal(po ? `Editar Orden de Pedido · ${po.number}` : 'Nueva Orden de Pedido a Proveedor', `
+    <div class="row">${field('po-sup', 'Proveedor', `<select id="po-sup">${options(actives.map(s => [s.id, s.name]), po ? po.supplierId : (actives[0] && actives[0].id))}</select>`)}
+    ${field('po-notes', 'Observaciones', `<input id="po-notes" value="${esc(po ? po.notes : '')}" placeholder="Ej.: Urgente, entregar por mañana">`)}</div>
+    <h3>Productos solicitados</h3><br>
+    <div id="po-items"></div>
+    <button class="btn sm" id="po-add" style="margin-top:8px">+ Agregar producto</button>`,
+    [{ label: 'Cancelar' }, {
+      label: 'Guardar Orden', cls: 'primary', fn: ov => {
+        clearErrs(ov);
+        const supplierId = +$('#po-sup', ov).value, notes = $('#po-notes', ov).value.trim();
+        if (!items.length) { toast('Agregá al menos un producto.', 'error'); return false; }
+        for (const it of items) {
+          if (!(it.qty > 0)) { toast('La cantidad debe ser mayor a cero.', 'error'); return false; }
+        }
+        if (po) {
+          po.supplierId = supplierId;
+          po.items = items;
+          po.notes = notes;
+          audit('Modificó orden de pedido', `Orden ${po.number}`, '—', supplierById(supplierId).name, me().id);
+        } else {
+          const number = 'OP-' + String(db.purchaseOrders.length + 1).padStart(7, '0');
+          db.purchaseOrders.push({
+            id: nextId(db.purchaseOrders),
+            number,
+            supplierId,
+            date: new Date().toISOString(),
+            status: 'Pendiente',
+            items: [...items],
+            userId: me().id,
+            notes
+          });
+          audit('Creó orden de pedido', `Orden ${number}`, '—', supplierById(supplierId).name, me().id);
+        }
+        save(); toast('Orden de pedido guardada'); render();
+      }
+    }], { wide: true });
+
+  const renderItems = () => {
+    $('#po-items', m.el).innerHTML = items.map((it, idx) => `
+      <div class="row" style="align-items:center;margin-bottom:8px">
+        <select data-po-p="${idx}">${options(prods.map(p => [p.id, `${p.name} (${p.code})`]), it.productId)}</select>
+        <input data-po-q="${idx}" inputmode="decimal" value="${it.qty}" placeholder="Cantidad" style="width:120px">
+        <button type="button" class="btn sm danger" data-po-rm="${idx}">✕</button>
+      </div>`).join('');
+  };
+
+  m.el.oninput = e => {
+    const q = e.target.closest('[data-po-q]');
+    if (q) { const idx = +q.dataset.poQ; items[idx].qty = parseNum(q.value) || 0; }
+  };
+  m.el.onchange = e => {
+    const sel = e.target.closest('[data-po-p]');
+    if (sel) { const idx = +sel.dataset.poP; items[idx].productId = +sel.value; }
+  };
+  m.el.onclick = e => {
+    if (e.target.id === 'po-add') { items.push({ productId: prods[0].id, qty: 10 }); renderItems(); }
+    const rm = e.target.closest('[data-po-rm]');
+    if (rm) { items.splice(+rm.dataset.poRm, 1); renderItems(); }
+  };
+
+  renderItems();
+}
+
+function viewPurchaseOrders(root) {
+  const todayStr = inputDate(new Date()), pastStr = inputDate(new Date(Date.now() - 30 * 86400000));
+  let st = 'Todos', df = pastStr, dt = todayStr;
+  root.innerHTML = pageHead(11, 'CU-11b', 'Órdenes de Compra / Pedido a Proveedores', 'Generá y enviá órdenes de pedido a tus proveedores de mercadería.', '<button class="btn primary" data-act="new">+ Nueva Orden de Pedido</button>') +
+    `<div class="toolbar"><div class="field"><select id="po-st">${options([['Todos', 'Todos los estados'], ['Pendiente', 'Pendiente'], ['Enviada', 'Enviada'], ['Recibida', 'Recibida']], st)}</select></div>
+    ${field('podf', 'Desde', `<input type="date" id="podf" value="${df}">`)}
+    ${field('podt', 'Hasta', `<input type="date" id="podt" value="${dt}">`)}
+    <button class="btn" id="poclear">Limpiar filtros</button></div><div class="card table-wrap" id="po-table"></div>`;
+  function draw() {
+    const a = df ? parseDay(df) : new Date(0), b = dt ? new Date(parseDay(dt).getTime() + 86399999) : new Date(8.64e15);
+    const list = db.purchaseOrders.filter(po => {
+      const d = new Date(po.date);
+      return d >= a && d <= b && (st === 'Todos' || po.status === st);
+    }).sort((x, y) => y.date.localeCompare(x.date));
+    $('#po-table', root).innerHTML = list.length ? `<table><thead><tr><th>N° Orden</th><th>Fecha</th><th>Proveedor</th><th>Ítems</th><th>Estado</th><th>Usuario</th><th class="right">Acciones</th></tr></thead><tbody>
+      ${list.map(po => {
+        const sup = supplierById(po.supplierId);
+        return `<tr><td><b>${po.number}</b></td><td>${fmtDT(po.date)}</td><td>${esc(sup ? sup.name : '—')}</td><td>${po.items.length} prod.</td><td><span class="badge">${po.status}</span></td><td>${esc(userName(po.userId))}</td>
+          <td class="right" style="white-space:nowrap"><button class="btn sm" data-view="${po.id}">Ver</button> ${po.status !== 'Recibida' ? `<button class="btn sm primary" data-send="${po.id}">${po.status === 'Pendiente' ? 'Marcar Enviada' : 'Recibir y Cargar'}</button>` : ''}</td></tr>`;
+      }).join('')}</tbody></table>` : '<div class="empty">No hay órdenes de pedido registradas.</div>';
+  }
+  draw();
+  $('#po-st', root).onchange = e => { st = e.target.value; draw(); };
+  $('#podf', root).onchange = e => { df = e.target.value; draw(); };
+  $('#podt', root).onchange = e => { dt = e.target.value; draw(); };
+  $('#poclear', root).onclick = () => { st = 'Todos'; df = ''; dt = ''; $('#po-st', root).value = st; $('#podf', root).value = ''; $('#podt', root).value = ''; draw(); };
+  root.onclick = e => {
+    if (e.target.closest('[data-act=new]')) return purchaseOrderModal(null);
+    const v = e.target.closest('[data-view]');
+    if (v) {
+      const po = db.purchaseOrders.find(x => x.id === +v.dataset.view);
+      const sup = supplierById(po.supplierId);
+      modal(`Orden de Pedido ${po.number}`, `<p class="muted">Proveedor: ${esc(sup ? sup.name : '—')} · Fecha: ${fmtDT(po.date)} · Estado: ${po.status}${po.notes ? '<br>Obs: ' + esc(po.notes) : ''}</p><br>
+        <div class="table-wrap"><table><thead><tr><th>Producto</th><th class="num">Cantidad</th></tr></thead><tbody>
+        ${po.items.map(it => { const p = prod(it.productId); return `<tr><td>${esc(p ? p.name : '—')}</td><td class="num">${num(it.qty)} ${p ? unitShort(p) : ''}</td></tr>`; }).join('')}
+        </tbody></table></div>`, [{ label: 'Cerrar' }]);
+      return;
+    }
+    const send = e.target.closest('[data-send]');
+    if (send) {
+      const po = db.purchaseOrders.find(x => x.id === +send.dataset.send);
+      if (po.status === 'Pendiente') {
+        po.status = 'Enviada';
+        save(); toast('Orden marcada como enviada'); draw();
+      } else if (po.status === 'Enviada') {
+        po.status = 'Recibida';
+        save(); toast('Orden recibida. Ya puede registrarla en Compras.'); draw();
+      }
+    }
+  };
+}
+
 function viewPurchases(root) {
+  const todayStr = inputDate(new Date()), pastStr = inputDate(new Date(Date.now() - 30 * 86400000));
+  let df = pastStr, dt = todayStr;
   root.innerHTML = pageHead(12, 'CU-12', 'Compras y Recepción de Mercadería', 'Registro de ingresos por remito o factura y actualización de costos (RF05).', '<button class="btn primary" data-act="new">+ Registrar nueva compra</button>') +
-    `<div class="card table-wrap"><table><thead><tr><th>N° Remito / Factura</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="num">Total Compra</th><th>Usuario</th></tr></thead><tbody>
-    ${db.purchases.map(pu => {
+    `<div class="toolbar">${field('pdf', 'Desde', `<input type="date" id="pdf" value="${df}">`)}
+    ${field('pdt', 'Hasta', `<input type="date" id="pdt" value="${dt}">`)}
+    <button class="btn" id="pclear">Limpiar filtros</button></div><div class="card table-wrap" id="ptable"></div>`;
+  function draw() {
+    const a = df ? parseDay(df) : new Date(0), b = dt ? new Date(parseDay(dt).getTime() + 86399999) : new Date(8.64e15);
+    const list = db.purchases.filter(pu => {
+      const d = new Date(pu.date);
+      return d >= a && d <= b;
+    }).sort((x, y) => y.date.localeCompare(x.date));
+    $('#ptable', root).innerHTML = list.length ? `<table><thead><tr><th>N° Remito / Factura</th><th>Fecha</th><th>Proveedor</th><th>Condición</th><th class="num">Total Compra</th><th>Usuario</th></tr></thead><tbody>
+    ${list.map(pu => {
       const sup = supplierById(pu.supplierId);
       return `<tr><td><b>${esc(pu.remito)}</b></td><td>${fmtDT(pu.date)}</td><td>${esc(sup ? sup.name : '—')}</td><td><span class="badge">${pu.condition}</span></td><td class="num"><b>${money(pu.total)}</b></td><td>${esc(userName(pu.userId))}</td></tr>`;
-    }).join('')}</tbody></table></div>`;
+    }).join('')}</tbody></table>` : '<div class="empty">No hay compras registradas en el período.</div>';
+  }
+  draw();
+  $('#pdf', root).onchange = e => { df = e.target.value; draw(); };
+  $('#pdt', root).onchange = e => { dt = e.target.value; draw(); };
+  $('#pclear', root).onclick = () => { df = ''; dt = ''; $('#pdf', root).value = ''; $('#pdt', root).value = ''; draw(); };
   root.onclick = e => {
     if (e.target.closest('[data-act=new]')) registerPurchaseModal();
   };
@@ -744,7 +893,7 @@ function productModal(p) {
 function viewProducts(root) {
   let q = '';
   root.innerHTML = pageHead(12, 'CU-13', 'Productos', 'Catálogo general de productos, costos y precios.', '<button class="btn primary" data-act="new">+ Nuevo producto</button>') +
-    `<div class="toolbar"><div class="field grow"><input id="pq" placeholder="Buscar por nombre o código"></div></div><div class="card table-wrap" id="ptable"></div>`;
+    `<div class="toolbar"><div class="field grow"><input id="pq" placeholder="Buscar por nombre o código"></div><button class="btn" id="pclear">Limpiar filtros</button></div><div class="card table-wrap" id="ptable"></div>`;
   function draw() {
     const list = db.products.filter(p => (p.name + ' ' + p.code).toLowerCase().includes(q.toLowerCase()));
     $('#ptable', root).innerHTML = list.length ? `<table><thead><tr><th>Imagen</th><th>Código</th><th>Nombre</th><th>Categoría</th><th class="num">Costo</th><th class="num">Precio Venta</th><th>Stock</th><th>Estado</th><th></th></tr></thead><tbody>
@@ -754,6 +903,7 @@ function viewProducts(root) {
   }
   draw();
   $('#pq', root).oninput = e => { q = e.target.value; draw(); };
+  $('#pclear', root).onclick = () => { q = ''; $('#pq', root).value = ''; draw(); };
   root.onclick = e => {
     if (e.target.closest('[data-act=new]')) return productModal(null);
     const ed = e.target.closest('[data-edit]'); if (ed) return productModal(prod(+ed.dataset.edit));
@@ -796,10 +946,10 @@ function viewCategories(root) {
 
 function stockMoveModal() {
   const actives = db.products.filter(p => p.active);
-  const m = modal('Nuevo movimiento de stock', `<div class="row">${field('sm-type', 'Tipo', `<select id="sm-type">${options([['egreso', 'Egreso'], ['ingreso', 'Ingreso']], 'ingreso')}</select>`)}
+  const m = modal('Nuevo movimiento de stock', `<div class="row">${field('sm-type', 'Tipo', `<select id="sm-type">${options([['egreso', 'Egreso (Baja manual)'], ['ingreso', 'Ingreso']], 'egreso')}</select>`)}
     ${field('sm-prod', 'Producto', `<select id="sm-prod">${options(actives.map(p => [p.id, p.name]), actives[0] && actives[0].id)}</select>`)}</div>
     <div class="hint" id="sm-stock" style="margin:-6px 0 10px"></div>
-    ${field('sm-qty', 'Cantidad', '<input id="sm-qty" inputmode="decimal">')}${field('sm-reason', 'Motivo', '<input id="sm-reason" placeholder="Ej.: ajuste manual, merma, descarte">')}`,
+    ${field('sm-qty', 'Cantidad', '<input id="sm-qty" inputmode="decimal">')}${field('sm-reason', 'Motivo', '<input id="sm-reason" placeholder="Ej.: merma, descarte, ajuste manual">')}`,
     [{ label: 'Cancelar' }, {
       label: 'Registrar', cls: 'primary', fn: ov => {
         clearErrs(ov);
@@ -810,8 +960,14 @@ function stockMoveModal() {
         else if (type === 'egreso' && qty > p.stock + 1e-9) { setErr(ov, 'sm-qty', `El egreso supera el stock disponible: ${qtyTxt(p, p.stock)}.`); bad = true; }
         if (!reason) { setErr(ov, 'sm-reason', 'Ingresá un motivo.'); bad = true; }
         if (bad) return false;
+        const oldStock = p.stock;
         const r = updateStock(p, qty, type, reason, me().id);
         if (!r.ok) { setErr(ov, 'sm-qty', r.error); return false; }
+        if (type === 'egreso') {
+          audit('Baja manual de stock', `Producto ${p.code} · ${p.name}`, `${num(oldStock)} ${unitShort(p)}`, `${num(p.stock)} ${unitShort(p)} (Motivo: ${reason})`, me().id);
+        } else {
+          audit('Ingreso manual de stock', `Producto ${p.code} · ${p.name}`, `${num(oldStock)} ${unitShort(p)}`, `${num(p.stock)} ${unitShort(p)} (Motivo: ${reason})`, me().id);
+        }
         save(); toast(`Stock resultante de ${p.name}: ${qtyTxt(p, p.stock)}`); render();
       }
     }]);
@@ -820,18 +976,36 @@ function stockMoveModal() {
 }
 
 function viewStockMoves(root) {
-  let ft = 'Todos los tipos', fp = '0';
-  root.innerHTML = pageHead(14, 'CU-15', 'Movimientos de stock', 'Ingresos y egresos de mercadería con su motivo.', '<button class="btn primary" data-act="new">+ Nuevo movimiento</button>') +
+  const todayStr = inputDate(new Date()), pastStr = inputDate(new Date(Date.now() - 30 * 86400000));
+  let ft = 'Todos los tipos', fc = '0', fp = '0', df = pastStr, dt = todayStr;
+  root.innerHTML = pageHead(14, 'CU-15', 'Movimientos de stock', 'Ingresos y egresos de mercadería con su motivo y auditoría.', '<button class="btn primary" data-act="new">+ Nuevo movimiento</button>') +
     `<div class="toolbar"><div class="field"><select id="f-type">${options([['Todos los tipos', 'Todos los tipos'], ['ingreso', 'Ingreso'], ['egreso', 'Egreso']], ft)}</select></div>
-    <div class="field"><select id="f-prod">${options([['0', 'Todos los productos'], ...db.products.map(p => [p.id, p.name])], fp)}</select></div></div><div class="card table-wrap" id="sm-table"></div>`;
-  function draw() {
-    const list = db.stockMovs.filter(m => (ft === 'Todos los tipos' || m.type === ft) && (fp === '0' || m.productId === +fp)).sort((a, b) => b.date.localeCompare(a.date));
-    $('#sm-table', root).innerHTML = list.length ? `<table><thead><tr><th>Fecha y hora</th><th>Producto</th><th>Tipo</th><th class="num">Cantidad</th><th>Motivo</th><th>Usuario</th></tr></thead><tbody>
-      ${list.map(m => { const p = prod(m.productId); return `<tr><td>${fmtDT(m.date)}</td><td><b>${esc(p.name)}</b></td><td><span class="badge ${m.type === 'ingreso' ? 'ok' : 'danger'}">${m.type === 'ingreso' ? 'Ingreso' : 'Egreso'}</span></td><td class="num">${qtyTxt(p, m.qty)}</td><td>${esc(m.reason)}</td><td>${esc(userName(m.userId))}</td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">No hay movimientos para mostrar.</div>';
+    <div class="field"><select id="f-cat">${options([['0', 'Todas las categorías'], ...db.categories.map(c => [c.id, c.name])], fc)}</select></div>
+    <div class="field"><select id="f-prod"><option value="0">Todos los productos</option></select></div>
+    ${field('smdf', 'Desde', `<input type="date" id="smdf" value="${df}">`)}
+    ${field('smdt', 'Hasta', `<input type="date" id="smdt" value="${dt}">`)}
+    <button class="btn" id="smclear">Limpiar filtros</button></div><div class="card table-wrap" id="sm-table"></div>`;
+  function updateProdSelect() {
+    const prods = db.products.filter(p => fc === '0' || p.catId === +fc);
+    $('#f-prod', root).innerHTML = options([['0', 'Todos los productos'], ...prods.map(p => [p.id, p.name])], fp);
   }
-  draw();
+  function draw() {
+    const a = df ? parseDay(df) : new Date(0), b = dt ? new Date(parseDay(dt).getTime() + 86399999) : new Date(8.64e15);
+    const list = db.stockMovs.filter(m => {
+      const d = new Date(m.date);
+      const p = prod(m.productId);
+      return d >= a && d <= b && (ft === 'Todos los tipos' || m.type === ft) && (fc === '0' || (p && p.catId === +fc)) && (fp === '0' || m.productId === +fp);
+    }).sort((x, y) => y.date.localeCompare(x.date));
+    $('#sm-table', root).innerHTML = list.length ? `<table><thead><tr><th>Fecha y hora</th><th>Producto</th><th>Tipo</th><th class="num">Cantidad</th><th>Motivo</th><th>Usuario</th></tr></thead><tbody>
+      ${list.map(m => { const p = prod(m.productId); return `<tr><td>${fmtDT(m.date)}</td><td><b>${esc(p ? p.name : '—')}</b></td><td><span class="badge ${m.type === 'ingreso' ? 'ok' : 'danger'}">${m.type === 'ingreso' ? 'Ingreso' : 'Egreso'}</span></td><td class="num">${p ? qtyTxt(p, m.qty) : m.qty}</td><td>${esc(m.reason)}</td><td>${esc(userName(m.userId))}</td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">No hay movimientos para mostrar.</div>';
+  }
+  updateProdSelect(); draw();
   $('#f-type', root).onchange = e => { ft = e.target.value; draw(); };
+  $('#f-cat', root).onchange = e => { fc = e.target.value; fp = '0'; updateProdSelect(); draw(); };
   $('#f-prod', root).onchange = e => { fp = e.target.value; draw(); };
+  $('#smdf', root).onchange = e => { df = e.target.value; draw(); };
+  $('#smdt', root).onchange = e => { dt = e.target.value; draw(); };
+  $('#smclear', root).onclick = () => { ft = 'Todos los tipos'; fc = '0'; fp = '0'; df = ''; dt = ''; $('#f-type', root).value = ft; $('#f-cat', root).value = fc; updateProdSelect(); $('#smdf', root).value = ''; $('#smdt', root).value = ''; draw(); };
   root.onclick = e => { if (e.target.closest('[data-act=new]')) stockMoveModal(); };
 }
 
@@ -839,9 +1013,10 @@ function viewControl(root) {
   let q = '', fc = '0', fl = 'Todos los niveles';
   const rank = { 'Sin stock': 0, 'Bajo': 1, 'Normal': 2 };
   root.innerHTML = pageHead(15, 'CU-16', 'Control de stock', 'Stock actual frente al mínimo. Lo urgente aparece primero.') +
-    `<div class="toolbar"><div class="field grow"><input id="cq2" placeholder="Buscar por nombre"></div>
+    `<div class="toolbar"><div class="field grow"><input id="cq2" placeholder="Buscar por nombre" value="${esc(q)}"></div>
     <div class="field"><select id="cc">${options([['0', 'Todas las categorías'], ...db.categories.map(c => [c.id, c.name])], fc)}</select></div>
-    <div class="field"><select id="cl">${options(['Todos los niveles', 'Normal', 'Bajo', 'Sin stock'].map(s => [s, s]), fl)}</select></div></div><div class="card table-wrap" id="ctable"></div>`;
+    <div class="field"><select id="cl">${options(['Todos los niveles', 'Normal', 'Bajo', 'Sin stock'].map(s => [s, s]), fl)}</select></div>
+    <button class="btn" id="cclear">Limpiar filtros</button></div><div class="card table-wrap" id="ctable"></div>`;
   function draw() {
     const list = db.products.filter(p => p.active && p.name.toLowerCase().includes(q.toLowerCase()) && (fc === '0' || p.catId === +fc) && (fl === 'Todos los niveles' || levelOf(p) === fl))
       .sort((a, b) => rank[levelOf(a)] - rank[levelOf(b)] || a.name.localeCompare(b.name));
@@ -852,6 +1027,7 @@ function viewControl(root) {
   $('#cq2', root).oninput = e => { q = e.target.value; draw(); };
   $('#cc', root).onchange = e => { fc = e.target.value; draw(); };
   $('#cl', root).onchange = e => { fl = e.target.value; draw(); };
+  $('#cclear', root).onclick = () => { q = ''; fc = '0'; fl = 'Todos los niveles'; $('#cq2', root).value = ''; $('#cc', root).value = fc; $('#cl', root).value = fl; draw(); };
   root.onclick = e => {
     const b = e.target.closest('[data-d]'); if (!b) return;
     const p = prod(+b.dataset.d);
@@ -876,7 +1052,7 @@ function viewCashPeriod(root) {
     `<div class="toolbar">${field('cf', 'Desde', `<input type="date" id="cf" value="${f.from}">`)}${field('ct', 'Hasta', `<input type="date" id="ct" value="${f.to}">`)}
     ${field('cty', 'Tipo', `<select id="cty">${options([['Todos', 'Todos'], ['ingreso', 'Ingresos'], ['egreso', 'Egresos']], 'Todos')}</select>`)}
     ${field('cme', 'Método de pago', `<select id="cme">${options([['Todos', 'Todos'], ...METHODS.map(m => [m, m])], 'Todos')}</select>`)}
-    <button class="btn primary" id="cbtn">Buscar</button></div><div id="cres"></div>`;
+    <button class="btn primary" id="cbtn">Buscar</button> <button class="btn" id="cclear">Limpiar</button></div><div id="cres"></div>`;
   function search() {
     clearErrs(root);
     f.from = $('#cf', root).value; f.to = $('#ct', root).value; f.type = $('#cty', root).value; f.method = $('#cme', root).value;
@@ -888,7 +1064,9 @@ function viewCashPeriod(root) {
       (list.length ? `<div class="card table-wrap"><table><thead><tr><th>Fecha y hora</th><th>Origen</th><th>Detalle</th><th>Método</th><th class="num">Monto</th></tr></thead><tbody>
       ${list.map(c => `<tr><td>${fmtDT(c.date)}</td><td><span class="badge">${c.origin}</span></td><td>${esc(c.desc)}</td><td>${c.method}</td><td class="num ${c.type === 'ingreso' ? 'pos-amount' : 'neg-amount'}">${c.type === 'ingreso' ? '+' : '-'} ${money(c.amount)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="card empty">No hay movimientos en el período elegido.</div>');
   }
-  $('#cbtn', root).onclick = search; search();
+  $('#cbtn', root).onclick = search;
+  $('#cclear', root).onclick = () => { $('#cf', root).value = inputDate(from); $('#ct', root).value = inputDate(today); $('#cty', root).value = 'Todos'; $('#cme', root).value = 'Todos'; search(); };
+  search();
 }
 
 function viewReports(root) {
@@ -896,13 +1074,16 @@ function viewReports(root) {
   const st = { tab: 'ventas', from: inputDate(s), to: inputDate(t), cat: '0', prod: '0', channel: 'Todos' };
   const bars = rows => { const max = Math.max(...rows.map(r => r.v), 1); return rows.map(r => `<div class="hbar"><span>${esc(r.l)}</span><div class="track"><div class="fill" style="width:${(r.v / max) * 100}%"></div></div><b>${r.t}</b></div>`).join(''); };
   function draw() {
-    const prods = [['0', 'Todos'], ...db.products.map(p => [p.id, p.name])], cats = [['0', 'Todas'], ...db.categories.map(c => [c.id, c.name])];
+    const cats = [['0', 'Todas'], ...db.categories.map(c => [c.id, c.name])];
+    const filteredProds = db.products.filter(p => st.cat === '0' || p.catId === +st.cat);
+    const prods = [['0', 'Todos'], ...filteredProds.map(p => [p.id, p.name])];
     const tabs = `<div class="chips no-print"><button class="chip ${st.tab === 'ventas' ? 'active' : ''}" data-tab="ventas">Ventas</button><button class="chip ${st.tab === 'stock' ? 'active' : ''}" data-tab="stock">Stock valorizado</button></div>`;
     let filters = '', body = '';
     if (st.tab === 'ventas') {
       filters = `<div class="toolbar no-print">${field('rf', 'Desde', `<input type="date" id="rf" value="${st.from}">`)}${field('rt', 'Hasta', `<input type="date" id="rt" value="${st.to}">`)}
         ${field('rc', 'Categoría', `<select id="rc">${options(cats, st.cat)}</select>`)}${field('rp', 'Producto', `<select id="rp">${options(prods, st.prod)}</select>`)}
-        ${field('rch', 'Canal', `<select id="rch">${options(['Todos', 'Web', 'Mostrador'].map(x => [x, x]), st.channel)}</select>`)}</div>`;
+        ${field('rch', 'Canal', `<select id="rch">${options(['Todos', 'Web', 'Mostrador'].map(x => [x, x]), st.channel)}</select>`)}
+        <button class="btn" id="rclear">Limpiar filtros</button></div>`;
       if (st.from > st.to) body = '<div class="card empty">La fecha Desde no puede ser posterior a la fecha Hasta.</div>';
       else {
         const a = parseDay(st.from), b = new Date(parseDay(st.to).getTime() + 86399999);
@@ -928,7 +1109,7 @@ function viewReports(root) {
           ${top.map((r, i) => `<tr><td>${i + 1}</td><td><div style="display:flex;align-items:center;gap:8px"><img src="${r.p.img || ''}" style="width:32px;height:32px;object-fit:cover;border-radius:6px"><b>${esc(r.p.name)}</b></div></td><td class="num">${qtyTxt(r.p, r.qty)}</td><td class="num">${money(r.amt)}</td></tr>`).join('')}</tbody></table></div></div></div>` : '<div class="card empty">No hay datos para los filtros elegidos.</div>';
       }
     } else {
-      filters = `<div class="toolbar no-print">${field('rc', 'Categoría', `<select id="rc">${options(cats, st.cat)}</select>`)}${field('rp', 'Producto', `<select id="rp">${options(prods, st.prod)}</select>`)}</div>`;
+      filters = `<div class="toolbar no-print">${field('rc', 'Categoría', `<select id="rc">${options(cats, st.cat)}</select>`)}${field('rp', 'Producto', `<select id="rp">${options(prods, st.prod)}</select>`)}<button class="btn" id="rclear">Limpiar filtros</button></div>`;
       const list = db.products.filter(p => p.active && (!+st.cat || p.catId === +st.cat) && (!+st.prod || p.id === +st.prod));
       if (!list.length) body = '<div class="card empty">No hay datos para los filtros elegidos.</div>';
       else {
@@ -947,9 +1128,11 @@ function viewReports(root) {
   root.onclick = e => {
     const tb = e.target.closest('[data-tab]'); if (tb) { st.tab = tb.dataset.tab; draw(); return; }
     if (e.target.closest('[data-act=pdf]')) { toast('En el diálogo de impresión elegí «Guardar como PDF».'); try { window.print(); } catch (err) { toast('No se pudo exportar el reporte. Intentá de nuevo.', 'error'); } }
+    if (e.target.id === 'rclear') { st.cat = '0'; st.prod = '0'; st.channel = 'Todos'; st.from = inputDate(s); st.to = inputDate(t); draw(); }
   };
   root.onchange = e => {
-    const map = { rf: 'from', rt: 'to', rc: 'cat', rp: 'prod', rch: 'channel' }, k = map[e.target.id];
+    if (e.target.id === 'rc') { st.cat = e.target.value; st.prod = '0'; draw(); return; }
+    const map = { rf: 'from', rt: 'to', rp: 'prod', rch: 'channel' }, k = map[e.target.id];
     if (k) { st[k] = e.target.value; draw(); }
   };
 }
@@ -1018,24 +1201,26 @@ function viewUsers(root) {
 }
 
 function viewAudit(root) {
-  const t = new Date(), s = new Date(); s.setDate(s.getDate() - 6);
-  const f = { from: inputDate(s), to: inputDate(t), user: '0', action: 'Todas' };
+  const todayStr = inputDate(new Date()), pastStr = inputDate(new Date(Date.now() - 30 * 86400000));
   const actors = [...new Set(db.audit.map(a => a.userId))].map(id => [id, userName(id)]);
   const actions = [...new Set(db.audit.map(a => a.action))];
+  let df = pastStr, dt = todayStr, user = '0', action = 'Todas';
   root.innerHTML = pageHead(19, 'CU-20', 'Auditoría', 'Historial de solo lectura: quién hizo qué y cuándo.') +
-    `<div class="toolbar">${field('af', 'Desde', `<input type="date" id="af" value="${f.from}">`)}${field('at', 'Hasta', `<input type="date" id="at" value="${f.to}">`)}
-    ${field('au', 'Usuario', `<select id="au">${options([['0', 'Todos'], ...actors], '0')}</select>`)}${field('aa', 'Tipo de acción', `<select id="aa">${options([['Todas', 'Todas'], ...actions.map(a => [a, a])], 'Todas')}</select>`)}
-    <button class="btn primary" id="abtn">Filtrar</button></div><div id="ares"></div><p class="muted" style="margin-top:10px">Los registros no se pueden modificar ni borrar.</p>`;
+    `<div class="toolbar">${field('af', 'Desde', `<input type="date" id="af" value="${df}">`)}${field('at', 'Hasta', `<input type="date" id="at" value="${dt}">`)}
+    ${field('au', 'Usuario', `<select id="au">${options([['0', 'Todos'], ...actors], user)}</select>`)}${field('aa', 'Tipo de acción', `<select id="aa">${options([['Todas', 'Todas'], ...actions.map(a => [a, a])], action)}</select>`)}
+    <button class="btn primary" id="abtn">Filtrar</button> <button class="btn" id="aclear">Limpiar</button></div><div id="ares"></div><p class="muted" style="margin-top:10px">Los registros no se pueden modificar ni borrar.</p>`;
   function search() {
     clearErrs(root);
-    f.from = $('#af', root).value; f.to = $('#at', root).value; f.user = $('#au', root).value; f.action = $('#aa', root).value;
-    if (f.from && f.to && f.from > f.to) { $('#ares', root).innerHTML = ''; return setErr(root, 'at', 'La fecha Desde no puede ser posterior a la fecha Hasta.'); }
-    const a = f.from ? parseDay(f.from) : new Date(0), b = f.to ? new Date(parseDay(f.to).getTime() + 86399999) : new Date(8.64e15);
-    const list = db.audit.filter(r => { const d = new Date(r.date); return d >= a && d <= b && (f.user === '0' || r.userId === +f.user) && (f.action === 'Todas' || r.action === f.action); }).sort((x, y) => y.date.localeCompare(x.date));
+    df = $('#af', root).value; dt = $('#at', root).value; user = $('#au', root).value; action = $('#aa', root).value;
+    if (df && dt && df > dt) { $('#ares', root).innerHTML = ''; return setErr(root, 'at', 'La fecha Desde no puede ser posterior a la fecha Hasta.'); }
+    const a = df ? parseDay(df) : new Date(0), b = dt ? new Date(parseDay(dt).getTime() + 86399999) : new Date(8.64e15);
+    const list = db.audit.filter(r => { const d = new Date(r.date); return d >= a && d <= b && (user === '0' || r.userId === +user) && (action === 'Todas' || r.action === action); }).sort((x, y) => y.date.localeCompare(x.date));
     $('#ares', root).innerHTML = list.length ? `<div class="card table-wrap"><table><thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Elemento afectado</th><th>Valor anterior</th><th>Valor nuevo</th></tr></thead><tbody>
       ${list.map(r => `<tr><td>${fmtDT(r.date)}</td><td>${esc(userName(r.userId))}</td><td><span class="badge">${esc(r.action)}</span></td><td>${esc(r.element)}</td><td>${esc(r.oldV)}</td><td><b>${esc(r.newV)}</b></td></tr>`).join('')}</tbody></table></div>` : '<div class="card empty">No hay registros para los filtros elegidos.</div>';
   }
-  $('#abtn', root).onclick = search; search();
+  $('#abtn', root).onclick = search;
+  $('#aclear', root).onclick = () => { $('#af', root).value = pastStr; $('#at', root).value = todayStr; $('#au', root).value = '0'; $('#aa', root).value = 'Todas'; search(); };
+  search();
 }
 
 function viewDashboard(root) {
@@ -1068,6 +1253,7 @@ const VIEWS = {
   caja: { roles: S, fn: viewCaja },
   alertas: { roles: S, fn: viewAlerts },
   proveedores: { roles: A, fn: viewSuppliers },
+  'ordenes-compra': { roles: A, fn: viewPurchaseOrders },
   compras: { roles: A, fn: viewPurchases },
   productos: { roles: A, fn: viewProducts },
   categorias: { roles: A, fn: viewCategories },
