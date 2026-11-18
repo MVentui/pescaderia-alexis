@@ -30,11 +30,11 @@ function hash(str) {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
 }
 
-const DB_KEY = 'alexis_db_v9';
+const DB_KEY = 'alexis_db_v10';
 const SESSION_KEY = 'alexis_session';
 
 function seed() {
-  const d = { seq: { order: 1074 }, users: [], categories: [], products: [], suppliers: [], purchases: [], orders: [], cash: [], stockMovs: [], alerts: [], audit: [], carts: {}, caja: null, cajaHist: [] };
+  const d = { seq: { order: 1074 }, users: [], categories: [], products: [], suppliers: [], purchaseOrders: [], purchases: [], orders: [], cash: [], stockMovs: [], alerts: [], audit: [], carts: {}, caja: null, cajaHist: [] };
   const pw = hash('alexis123');
 
   [
@@ -93,6 +93,17 @@ function seed() {
     [3, 'Mariscos del Sur S.A.', '30-55443322-1', 'Puerto de Comodoro Rivadavia', '0297 447-3322', 'contacto@mariscosdelsur.com']
   ].forEach(([id, name, cuit, address, phone, email]) =>
     d.suppliers.push({ id, name, cuit, address, phone, email, active: true }));
+
+  d.purchaseOrders.push({
+    id: 1,
+    number: 'OP-0000001',
+    supplierId: 1,
+    date: ago(1, 10, 0),
+    status: 'Enviada',
+    items: [{ productId: 1, qty: 30 }, { productId: 2, qty: 10 }],
+    userId: 1,
+    notes: 'Pedido semanal'
+  });
 
   d.purchases.push({
     id: 1,
